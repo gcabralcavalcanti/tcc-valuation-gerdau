@@ -1,16 +1,16 @@
-# -*- coding: utf-8 -*-
 """
 05 — Painel de fundamentos (anual e trimestral) a partir dos extratos da CVM.
 
 Lê os CSVs gerados por 01_cvm_dfp_itr.py e 01b_cvm_fre_acoes.py (pasta Tabelas intermediárias (CSV)/) e monta:
-  Tabelas intermediárias (CSV)/fundamentos_anuais.csv      -> Gerdau, CSN e Usiminas, 2009–2025 (2009 = coluna comparativa
-                                          "PENÚLTIMO" da DFP 2010; demais anos = "ÚLTIMO" da DFP do próprio ano,
-                                          isto é, o número COMO DIVULGADO na época, sem reapresentações posteriores)
-  Tabelas intermediárias (CSV)/fundamentos_trimestrais.csv -> Gerdau, 2010T1–último ITR: mesmas variáveis do painel anual,
-                                          fluxos (DRE/DFC) em TRIMESTRE ISOLADO + colunas LTM (12 meses)
-  Tabelas intermediárias (CSV)/acoes_gerdau.csv            -> ações totais, em tesouraria e em circulação por data
-  Tabelas intermediárias (CSV)/mapeamento_contas.csv       -> que conta CVM (código + descrição) alimentou cada variável em cada ano
-  Tabelas intermediárias (CSV)/validacao_anual.txt         -> tabela de validação e alertas
+  fundamentos_anuais.csv      Gerdau, CSN e Usiminas, 2009–2025 (2009 = coluna comparativa "PENÚLTIMO" da DFP
+                              2010; demais anos = "ÚLTIMO" da DFP do próprio ano, isto é, o número COMO DIVULGADO
+                              na época, sem reapresentações posteriores)
+  fundamentos_trimestrais.csv Gerdau, 2010T1–último ITR: mesmas variáveis do painel anual, fluxos (DRE/DFC) em
+                              TRIMESTRE ISOLADO + colunas LTM (12 meses)
+  acoes_gerdau.csv            ações totais, em tesouraria e em circulação por data
+  mapeamento_contas.csv       que conta CVM (código + descrição) alimentou cada variável em cada ano
+  validacao_anual.txt         tabela de validação e alertas
+(todos em Tabelas intermediárias (CSV)/)
 
 Regra de mapeamento: por CÓDIGO e conferindo a DESCRIÇÃO (padrão regex). Quando a conta muda de código
 ao longo dos anos (D&A, capex, arrendamentos), a busca é feita pela descrição dentro do grupo certo.
@@ -18,16 +18,16 @@ Todos os valores em R$ mil (exceto ações, em unidades, e LPA, em R$/ação).
 Sinais: mantidos como na CVM (custos/despesas negativos), EXCETO capex, que é guardado positivo.
 Uso:  python -I 05_fundamentos_cvm.py
 """
+
 import os
 import re
-import sys
 import site
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # pasta dos scripts (código próprio)
 sys.path.append(site.getusersitepackages())  # pacotes instalados com pip --user (o -I os desativa)
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
-
 from _comum import pasta_tratados  # noqa: E402
 
 OUT = pasta_tratados()
@@ -107,7 +107,8 @@ def soma_desc(d, dems, prefixo, incluir, excluir=None, sinal=None):
         x = x[x["VL_CONTA_MIL"] <= 0]
     if x.empty:
         return np.nan, ""
-    return float(x["VL_CONTA_MIL"].sum()), " + ".join(f"{c} {s}" for c, s in zip(x["CD_CONTA"], x["DS_CONTA"]))
+    contas = " + ".join(f"{c} {s}" for c, s in zip(x["CD_CONTA"], x["DS_CONTA"], strict=True))
+    return float(x["VL_CONTA_MIL"].sum()), contas
 
 
 def extrair(d):
@@ -133,11 +134,14 @@ def extrair(d):
     v["capex"] = v["capex_imobilizado"] + v["capex_intangivel"]
     # Juros: despesa de juros (ajuste no caixa operacional) e juros pagos (exclui arrendamento e receitas)
     v["despesa_juros_dfc"], o["despesa_juros_dfc"] = soma_desc(
-        d, dfc, "6.01.01", r"juros", r"arrendamento|receita|m.tuo|ligadas|aplica|capital pr.prio|ativo")
+        d, dfc, "6.01.01", r"juros", r"arrendamento|receita|m.tuo|ligadas|aplica|capital pr.prio|ativo"
+    )
     v["juros_pagos_dfc"], o["juros_pagos_dfc"] = soma_desc(
-        d, dfc, "6.0", r"(?:pagamento.*juros|juros.*pagos)", r"arrendamento|capital pr.prio")
+        d, dfc, "6.0", r"(?:pagamento.*juros|juros.*pagos)", r"arrendamento|capital pr.prio"
+    )
     v["dividendos_jcp_pagos_dfc"], o["dividendos_jcp_pagos_dfc"] = soma_desc(
-        d, dfc, "6.03", r"dividendo|capital pr.prio", r"recebi")
+        d, dfc, "6.03", r"dividendo|capital pr.prio", r"recebi"
+    )
     # Impairment (linhas 3.04.xx com 'recuperabilidade') e equivalência patrimonial
     v["impairment"], o["impairment"] = soma_desc(d, ["DRE"], "3.04", r"recuperabilidade")
     v["equivalencia_patrimonial"], o["equivalencia_patrimonial"] = soma_desc(d, ["DRE"], "3.04", r"equival")
@@ -149,13 +153,15 @@ def extrair(d):
     # ---- agregados
     z = lambda k: 0.0 if pd.isna(v.get(k)) else v[k]  # noqa: E731
     v["despesas_vendas_ga"] = np.nan
-    v["divida_bruta"] = z("emprestimos_cp_total") + z("emprestimos_lp_total")   # inclui debêntures e arrend. financeiro
-    v["arrendamentos_total"] = z("arrend_ifrs16_cp") + z("arrend_ifrs16_lp") + z("arrend_financeiro_cp") + z("arrend_financeiro_lp")
+    v["divida_bruta"] = z("emprestimos_cp_total") + z("emprestimos_lp_total")  # inclui debêntures e arrend. financeiro
+    v["arrendamentos_total"] = (
+        z("arrend_ifrs16_cp") + z("arrend_ifrs16_lp") + z("arrend_financeiro_cp") + z("arrend_financeiro_lp")
+    )
     v["divida_bruta_com_arrend_ifrs16"] = v["divida_bruta"] + z("arrend_ifrs16_cp") + z("arrend_ifrs16_lp")
     v["caixa_aplicacoes"] = z("caixa_equivalentes") + z("aplicacoes_financeiras_cp")
     v["divida_liquida"] = v["divida_bruta"] - v["caixa_aplicacoes"]
     v["ebitda"] = v["ebit"] + v["da"] if not pd.isna(v["da"]) else np.nan
-    v["ebit_ex_impairment"] = v["ebit"] - z("impairment")   # EBIT recorrente (sem perdas/reversões de impairment)
+    v["ebit_ex_impairment"] = v["ebit"] - z("impairment")  # EBIT recorrente (sem perdas/reversões de impairment)
     v["pl_controladores"] = z("pl_total") - z("pl_nao_controladores")
     # checagens internas
     if not pd.isna(v["ativo_total"]) and abs(v["ativo_total"] - z("passivo_total")) > 1:
@@ -175,16 +181,23 @@ C["ano_dfp"] = C["DT_REFER"].str[:4].astype(int)
 linhas, mapa, alertas = [], [], []
 for (emp, ano_dfp), g in C.groupby(["EMPRESA", "ano_dfp"]):
     ordens = [(ULT, ano_dfp)]
-    if ano_dfp == C["ano_dfp"].min():          # DFP 2010 -> também o comparativo de 2009
+    if ano_dfp == C["ano_dfp"].min():  # DFP 2010 -> também o comparativo de 2009
         ordens.append((PEN, ano_dfp - 1))
     for ordem, exerc in ordens:
         d = g[g["ORDEM_EXERC"] == ordem]
         # BP: posição na data de fim; DRE/DFC: exercício completo
         v, o, av = extrair(d)
         info = d.iloc[0]
-        v.update(empresa=emp, exercicio=exerc, dt_fim_exercicio=f"{exerc}-12-31", fonte_dfp=f"DFP {ano_dfp} ({ordem})",
-                 versao=int(info["VERSAO"]), dt_receb=info["DT_RECEB"], dt_receb_primeira=info["DT_RECEB_PRIMEIRA"],
-                 url_zip=info["URL_ZIP"])
+        v.update(
+            empresa=emp,
+            exercicio=exerc,
+            dt_fim_exercicio=f"{exerc}-12-31",
+            fonte_dfp=f"DFP {ano_dfp} ({ordem})",
+            versao=int(info["VERSAO"]),
+            dt_receb=info["DT_RECEB"],
+            dt_receb_primeira=info["DT_RECEB_PRIMEIRA"],
+            url_zip=info["URL_ZIP"],
+        )
         linhas.append(v)
         for var, orig in o.items():
             mapa.append({"empresa": emp, "exercicio": exerc, "variavel": var, "contas_cvm": orig})
@@ -199,11 +212,19 @@ for tipo in ["dfp", "itr"]:
         k = pd.read_csv(p)
         k = k[k["EMPRESA"] == "GERDAU"]
         for _, r in k.iterrows():
-            acoes.append({"data": r["DT_REFER"], "fonte": f"CVM {tipo.upper()} composicao_capital (v{r['VERSAO']})",
-                          "on_total": r["QT_ACAO_ORDIN_CAP_INTEGR"], "pn_total": r["QT_ACAO_PREF_CAP_INTEGR"],
-                          "acoes_total": r["QT_ACAO_TOTAL_CAP_INTEGR"], "on_tesouraria": r["QT_ACAO_ORDIN_TESOURO"],
-                          "pn_tesouraria": r["QT_ACAO_PREF_TESOURO"], "tesouraria_total": r["QT_ACAO_TOTAL_TESOURO"],
-                          "url": r["URL_ZIP"]})
+            acoes.append(
+                {
+                    "data": r["DT_REFER"],
+                    "fonte": f"CVM {tipo.upper()} composicao_capital (v{r['VERSAO']})",
+                    "on_total": r["QT_ACAO_ORDIN_CAP_INTEGR"],
+                    "pn_total": r["QT_ACAO_PREF_CAP_INTEGR"],
+                    "acoes_total": r["QT_ACAO_TOTAL_CAP_INTEGR"],
+                    "on_tesouraria": r["QT_ACAO_ORDIN_TESOURO"],
+                    "pn_tesouraria": r["QT_ACAO_PREF_TESOURO"],
+                    "tesouraria_total": r["QT_ACAO_TOTAL_TESOURO"],
+                    "url": r["URL_ZIP"],
+                }
+            )
 # FRE (2009–2019): total pelo histórico de aprovações de capital; tesouraria pela movimentação anual
 cs = pd.read_csv(os.path.join(OUT, "cvm_fre_capital_social.csv"))
 cs = cs[(cs["EMPRESA"] == "GERDAU") & (cs["Tipo_Capital"] == "Capital Integralizado")]
@@ -223,10 +244,10 @@ def tesouraria_fre(ano, esp):
     às vezes repetem exercícios antigos com datas deslocadas — por isso não usamos o último FRE.)"""
     x = tm[(tm["ano_fre"] == ano + 1) & (tm["ano_ex"] == ano) & (tm["especie"] == esp)]
     if not x.empty:
-        return float(x["Quantidade_Final"].iloc[0]), f"FRE {ano+1} (saldo final {ano})"
+        return float(x["Quantidade_Final"].iloc[0]), f"FRE {ano + 1} (saldo final {ano})"
     x = tm[(tm["ano_fre"] == ano + 2) & (tm["ano_ex"] == ano + 1) & (tm["especie"] == esp)]
     if not x.empty:
-        return float(x["Quantidade_Inicial"].iloc[0]), f"FRE {ano+2} (saldo inicial {ano+1})"
+        return float(x["Quantidade_Inicial"].iloc[0]), f"FRE {ano + 2} (saldo inicial {ano + 1})"
     return (0.0, "sem registro no FRE (assumido 0)") if esp == "on" else (np.nan, "sem registro")
 
 
@@ -244,13 +265,21 @@ for ano in range(2009, 2020):
     # LPA de 2010 implica ~1.425 mi). Como os dados abertos guardam só a última versão do FRE, deixamos vazio.
     if ano < 2011:
         r = None
-    acoes.append({"data": lim, "fonte": f"CVM FRE: capital social aprovado em {r['Data_Autorizacao_Aprovacao'] if r is not None else 'n/d (FRE inconsistente)'}; "
-                                       f"tesouraria ON {f_on}, PN {f_pn}",
-                  "on_total": r["Quantidade_Acoes_Ordinarias"] if r is not None else np.nan,
-                  "pn_total": r["Quantidade_Acoes_Preferenciais"] if r is not None else np.nan,
-                  "acoes_total": r["Quantidade_Total_Acoes"] if r is not None else np.nan,
-                  "on_tesouraria": on_t, "pn_tesouraria": pn_t, "tesouraria_total": on_t + pn_t,
-                  "url": "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/FRE/DADOS/"})
+    acoes.append(
+        {
+            "data": lim,
+            "fonte": "CVM FRE: capital social aprovado em "
+            f"{r['Data_Autorizacao_Aprovacao'] if r is not None else 'n/d (FRE inconsistente)'}; "
+            f"tesouraria ON {f_on}, PN {f_pn}",
+            "on_total": r["Quantidade_Acoes_Ordinarias"] if r is not None else np.nan,
+            "pn_total": r["Quantidade_Acoes_Preferenciais"] if r is not None else np.nan,
+            "acoes_total": r["Quantidade_Total_Acoes"] if r is not None else np.nan,
+            "on_tesouraria": on_t,
+            "pn_tesouraria": pn_t,
+            "tesouraria_total": on_t + pn_t,
+            "url": "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/FRE/DADOS/",
+        }
+    )
 A = pd.DataFrame(acoes)
 A["acoes_circulacao"] = A["acoes_total"] - A["tesouraria_total"]
 A = A.sort_values("data").drop_duplicates("data", keep="first").reset_index(drop=True)
@@ -259,50 +288,128 @@ A.to_csv(os.path.join(OUT, "acoes_gerdau.csv"), index=False)
 # junta ações ao painel anual da Gerdau + ações implícitas no LPA (conferência)
 Aa = A[A["data"].str.endswith("12-31")].copy()
 Aa["exercicio"] = Aa["data"].str[:4].astype(int)
-F = F.merge(Aa[["exercicio", "acoes_total", "tesouraria_total", "acoes_circulacao", "fonte"]]
-            .rename(columns={"fonte": "fonte_acoes"}).assign(empresa="GERDAU"), on=["empresa", "exercicio"], how="left")
-F["acoes_implicitas_lpa"] = (F["lucro_controladores"] * 1000 / F["lpa_basico_pn"]).where(F["lpa_basico_pn"].abs() > 0.005)
+F = F.merge(
+    Aa[["exercicio", "acoes_total", "tesouraria_total", "acoes_circulacao", "fonte"]]
+    .rename(columns={"fonte": "fonte_acoes"})
+    .assign(empresa="GERDAU"),
+    on=["empresa", "exercicio"],
+    how="left",
+)
+F["acoes_implicitas_lpa"] = (F["lucro_controladores"] * 1000 / F["lpa_basico_pn"]).where(
+    F["lpa_basico_pn"].abs() > 0.005
+)
 
 cols_id = ["empresa", "exercicio", "dt_fim_exercicio", "fonte_dfp", "versao", "dt_receb", "dt_receb_primeira"]
-cols_var = ["receita_liquida", "cpv", "lucro_bruto", "despesas_operacionais", "impairment", "equivalencia_patrimonial",
-            "ebit", "ebit_ex_impairment", "da", "ebitda", "resultado_financeiro", "receitas_financeiras",
-            "despesas_financeiras", "despesa_juros_dfc", "juros_pagos_dfc", "lair", "ir_cs", "lucro_liquido", "lucro_controladores",
-            "lucro_nao_controladores", "lpa_basico_on", "lpa_basico_pn", "capex_imobilizado", "capex_intangivel", "capex",
-            "dividendos_jcp_pagos_dfc", "contas_receber", "estoques", "fornecedores", "caixa_equivalentes",
-            "aplicacoes_financeiras_cp", "caixa_aplicacoes", "emprestimos_financiamentos_cp", "debentures_cp",
-            "arrend_financeiro_cp", "emprestimos_cp_total", "emprestimos_financiamentos_lp", "debentures_lp",
-            "arrend_financeiro_lp", "emprestimos_lp_total", "divida_bruta", "arrend_ifrs16_cp", "arrend_ifrs16_lp",
-            "arrendamentos_total", "divida_bruta_com_arrend_ifrs16", "divida_liquida", "ativo_total", "imobilizado",
-            "intangivel", "pl_total", "pl_nao_controladores", "pl_controladores", "acoes_total", "tesouraria_total",
-            "acoes_circulacao", "acoes_implicitas_lpa", "fonte_acoes", "dfc_metodo", "url_zip"]
+cols_var = [
+    "receita_liquida",
+    "cpv",
+    "lucro_bruto",
+    "despesas_operacionais",
+    "impairment",
+    "equivalencia_patrimonial",
+    "ebit",
+    "ebit_ex_impairment",
+    "da",
+    "ebitda",
+    "resultado_financeiro",
+    "receitas_financeiras",
+    "despesas_financeiras",
+    "despesa_juros_dfc",
+    "juros_pagos_dfc",
+    "lair",
+    "ir_cs",
+    "lucro_liquido",
+    "lucro_controladores",
+    "lucro_nao_controladores",
+    "lpa_basico_on",
+    "lpa_basico_pn",
+    "capex_imobilizado",
+    "capex_intangivel",
+    "capex",
+    "dividendos_jcp_pagos_dfc",
+    "contas_receber",
+    "estoques",
+    "fornecedores",
+    "caixa_equivalentes",
+    "aplicacoes_financeiras_cp",
+    "caixa_aplicacoes",
+    "emprestimos_financiamentos_cp",
+    "debentures_cp",
+    "arrend_financeiro_cp",
+    "emprestimos_cp_total",
+    "emprestimos_financiamentos_lp",
+    "debentures_lp",
+    "arrend_financeiro_lp",
+    "emprestimos_lp_total",
+    "divida_bruta",
+    "arrend_ifrs16_cp",
+    "arrend_ifrs16_lp",
+    "arrendamentos_total",
+    "divida_bruta_com_arrend_ifrs16",
+    "divida_liquida",
+    "ativo_total",
+    "imobilizado",
+    "intangivel",
+    "pl_total",
+    "pl_nao_controladores",
+    "pl_controladores",
+    "acoes_total",
+    "tesouraria_total",
+    "acoes_circulacao",
+    "acoes_implicitas_lpa",
+    "fonte_acoes",
+    "dfc_metodo",
+    "url_zip",
+]
 F = F[cols_id + cols_var].sort_values(["empresa", "exercicio"])
 F.to_csv(os.path.join(OUT, "fundamentos_anuais.csv"), index=False)
 pd.DataFrame(mapa).to_csv(os.path.join(OUT, "mapeamento_contas.csv"), index=False)
 
 # 3) VALIDAÇÃO ---------------------------------------------------------------------------------
 G = F[F["empresa"] == "GERDAU"].set_index("exercicio")
-tab = pd.DataFrame({
-    "receita": G["receita_liquida"] / 1e3, "ebit": G["ebit"] / 1e3, "mg_ebit_%": 100 * G["ebit"] / G["receita_liquida"],
-    "d&a": G["da"] / 1e3, "capex": G["capex"] / 1e3, "div_bruta": G["divida_bruta"] / 1e3,
-    "caixa+aplic": G["caixa_aplicacoes"] / 1e3, "div_liq": G["divida_liquida"] / 1e3,
-    "lucro_contr": G["lucro_controladores"] / 1e3, "acoes_circ_mi": G["acoes_circulacao"] / 1e6,
-    "acoes_lpa_mi": G["acoes_implicitas_lpa"] / 1e6, "dt_receb": G["dt_receb"]})
+tab = pd.DataFrame(
+    {
+        "receita": G["receita_liquida"] / 1e3,
+        "ebit": G["ebit"] / 1e3,
+        "mg_ebit_%": 100 * G["ebit"] / G["receita_liquida"],
+        "d&a": G["da"] / 1e3,
+        "capex": G["capex"] / 1e3,
+        "div_bruta": G["divida_bruta"] / 1e3,
+        "caixa+aplic": G["caixa_aplicacoes"] / 1e3,
+        "div_liq": G["divida_liquida"] / 1e3,
+        "lucro_contr": G["lucro_controladores"] / 1e3,
+        "acoes_circ_mi": G["acoes_circulacao"] / 1e6,
+        "acoes_lpa_mi": G["acoes_implicitas_lpa"] / 1e6,
+        "dt_receb": G["dt_receb"],
+    }
+)
 # alertas automáticos: variações extremas
 for col in ["receita", "ebit", "d&a", "capex", "div_bruta"]:
     s = tab[col]
     var = s.pct_change(fill_method=None)
     for a, x in var.items():
         if pd.notna(x) and abs(x) > 0.6:
-            alertas.append(f"GERDAU {a}: {col} variou {100*x:+.0f}% vs ano anterior (conferir)")
+            alertas.append(f"GERDAU {a}: {col} variou {100 * x:+.0f}% vs ano anterior (conferir)")
 for a, r in tab.iterrows():
-    if pd.notna(r["acoes_circ_mi"]) and pd.notna(r["acoes_lpa_mi"]) and abs(r["acoes_circ_mi"] / r["acoes_lpa_mi"] - 1) > 0.1:
-        alertas.append(f"GERDAU {a}: ações em circulação ({r['acoes_circ_mi']:.0f} mi) difere >10% das implícitas no LPA ({r['acoes_lpa_mi']:.0f} mi)")
+    if (
+        pd.notna(r["acoes_circ_mi"])
+        and pd.notna(r["acoes_lpa_mi"])
+        and abs(r["acoes_circ_mi"] / r["acoes_lpa_mi"] - 1) > 0.1
+    ):
+        alertas.append(
+            f"GERDAU {a}: ações em circulação ({r['acoes_circ_mi']:.0f} mi) difere >10% das implícitas no LPA "
+            f"({r['acoes_lpa_mi']:.0f} mi)"
+        )
     if pd.isna(r["acoes_circ_mi"]):
         alertas.append(f"GERDAU {a}: ações em circulação indisponível (usar acoes_implicitas_lpa como aproximação)")
 
 pd.set_option("display.width", 250)
-txt = ("TABELA DE VALIDAÇÃO — GERDAU S.A. consolidado (R$ milhões; ações em milhões)\n"
-       + tab.round(1).to_string() + "\n\nALERTAS\n" + "\n".join(alertas))
+txt = (
+    "TABELA DE VALIDAÇÃO — GERDAU S.A. consolidado (R$ milhões; ações em milhões)\n"
+    + tab.round(1).to_string()
+    + "\n\nALERTAS\n"
+    + "\n".join(alertas)
+)
 open(os.path.join(OUT, "validacao_anual.txt"), "w", encoding="utf-8").write(txt)
 print(txt)
 
@@ -315,24 +422,68 @@ print(txt)
 # 2010 T1–T3: a série de ITR nos dados abertos começa em 2011, então os FLUXOS de 2010 vêm da coluna
 # comparativa (PENÚLTIMO) dos ITRs de 2011 (entregues em 2011 -> NÃO estavam disponíveis em 2010);
 # os saldos de 2010 T1–T3 ficam vazios.
-FLUXOS = ["receita_liquida", "cpv", "lucro_bruto", "despesas_operacionais", "impairment", "equivalencia_patrimonial",
-          "ebit", "ebit_ex_impairment", "da", "ebitda", "resultado_financeiro", "receitas_financeiras",
-          "despesas_financeiras", "despesa_juros_dfc", "juros_pagos_dfc", "lair", "ir_cs", "lucro_liquido", "lucro_controladores",
-          "lucro_nao_controladores", "capex_imobilizado", "capex_intangivel", "capex", "dividendos_jcp_pagos_dfc"]
-SALDOS = [c for c in cols_var if c not in FLUXOS and c not in
-          ("lpa_basico_on", "lpa_basico_pn", "acoes_total", "tesouraria_total", "acoes_circulacao",
-           "acoes_implicitas_lpa", "fonte_acoes", "dfc_metodo", "url_zip")]
-I = pd.read_csv(os.path.join(OUT, "cvm_itr_contas.csv"), dtype={"CD_CONTA": str})
-I = I[I["EMPRESA"] == "GERDAU"]
+FLUXOS = [
+    "receita_liquida",
+    "cpv",
+    "lucro_bruto",
+    "despesas_operacionais",
+    "impairment",
+    "equivalencia_patrimonial",
+    "ebit",
+    "ebit_ex_impairment",
+    "da",
+    "ebitda",
+    "resultado_financeiro",
+    "receitas_financeiras",
+    "despesas_financeiras",
+    "despesa_juros_dfc",
+    "juros_pagos_dfc",
+    "lair",
+    "ir_cs",
+    "lucro_liquido",
+    "lucro_controladores",
+    "lucro_nao_controladores",
+    "capex_imobilizado",
+    "capex_intangivel",
+    "capex",
+    "dividendos_jcp_pagos_dfc",
+]
+SALDOS = [
+    c
+    for c in cols_var
+    if c not in FLUXOS
+    and c
+    not in (
+        "lpa_basico_on",
+        "lpa_basico_pn",
+        "acoes_total",
+        "tesouraria_total",
+        "acoes_circulacao",
+        "acoes_implicitas_lpa",
+        "fonte_acoes",
+        "dfc_metodo",
+        "url_zip",
+    )
+]
+itr = pd.read_csv(os.path.join(OUT, "cvm_itr_contas.csv"), dtype={"CD_CONTA": str})
+itr = itr[itr["EMPRESA"] == "GERDAU"]
 tri = []
 
 
 def registro_tri(d_fluxo_ytd, d_saldo, dt_fim, info, fonte, obs=""):
     vf, _, _ = extrair(d_fluxo_ytd)
-    r = {"dt_fim_periodo": dt_fim, "ano": int(dt_fim[:4]), "trimestre": int(dt_fim[5:7]) // 3,
-         "documento": fonte.split()[0], "fonte": fonte, "versao": int(info["VERSAO"]),
-         "dt_receb_primeira": info["DT_RECEB_PRIMEIRA"], "dt_receb": info["DT_RECEB"],
-         "n_versoes": int(info["N_VERSOES"]) if pd.notna(info["N_VERSOES"]) else np.nan, "obs": obs}
+    r = {
+        "dt_fim_periodo": dt_fim,
+        "ano": int(dt_fim[:4]),
+        "trimestre": int(dt_fim[5:7]) // 3,
+        "documento": fonte.split()[0],
+        "fonte": fonte,
+        "versao": int(info["VERSAO"]),
+        "dt_receb_primeira": info["DT_RECEB_PRIMEIRA"],
+        "dt_receb": info["DT_RECEB"],
+        "n_versoes": int(info["N_VERSOES"]) if pd.notna(info["N_VERSOES"]) else np.nan,
+        "obs": obs,
+    }
     for c in FLUXOS:
         r[c + "_ytd"] = vf.get(c, np.nan)
     if d_saldo is not None:
@@ -342,7 +493,7 @@ def registro_tri(d_fluxo_ytd, d_saldo, dt_fim, info, fonte, obs=""):
     return r
 
 
-for dt_ref, g in I.groupby("DT_REFER"):
+for dt_ref, g in itr.groupby("DT_REFER"):
     ano = int(dt_ref[:4])
     u = g[g["ORDEM_EXERC"] == ULT]
     ytd = u[(u["DEMONSTRACAO"] != "DRE") | (u["DT_INI_EXERC"] == f"{ano}-01-01")]
@@ -352,8 +503,16 @@ for dt_ref, g in I.groupby("DT_REFER"):
         p = g[(g["ORDEM_EXERC"] == PEN) & (g["DEMONSTRACAO"] != "BPA") & (g["DEMONSTRACAO"] != "BPP")]
         p = p[(p["DEMONSTRACAO"] != "DRE") | (p["DT_INI_EXERC"] == "2010-01-01")]
         dt10 = "2010" + dt_ref[4:]
-        tri.append(registro_tri(p, None, dt10, u.iloc[0], f"ITR {dt_ref} (comparativo)",
-                                "fluxos de 2010 tirados do comparativo do ITR 2011; saldos indisponíveis"))
+        tri.append(
+            registro_tri(
+                p,
+                None,
+                dt10,
+                u.iloc[0],
+                f"ITR {dt_ref} (comparativo)",
+                "fluxos de 2010 tirados do comparativo do ITR 2011; saldos indisponíveis",
+            )
+        )
 Cg = C[C["EMPRESA"] == "GERDAU"]
 for ano_dfp, g in Cg.groupby("ano_dfp"):
     u = g[g["ORDEM_EXERC"] == ULT]
@@ -371,8 +530,19 @@ for c in FLUXOS:
 # LTM = soma dos 4 últimos trimestres consecutivos
 T["_idx"] = T["ano"] * 4 + T["trimestre"]
 consec = (T["_idx"] - T["_idx"].shift(3)) == 3
-LTM = ["receita_liquida", "ebit", "ebit_ex_impairment", "da", "ebitda", "capex", "ir_cs", "lair", "lucro_liquido",
-       "lucro_controladores", "despesa_juros_dfc"]
+LTM = [
+    "receita_liquida",
+    "ebit",
+    "ebit_ex_impairment",
+    "da",
+    "ebitda",
+    "capex",
+    "ir_cs",
+    "lair",
+    "lucro_liquido",
+    "lucro_controladores",
+    "despesa_juros_dfc",
+]
 for c in LTM:
     T[c + "_ltm"] = T[c].rolling(4, min_periods=4).sum().where(consec)
 # conferência: LTM no 4º tri deve bater com o anual
@@ -383,15 +553,40 @@ print(f"Conferência LTM(4T) vs anual (receita): diferença máx. = {dif:,.1f} (
 A2 = A.copy()
 A2["dt"] = pd.to_datetime(A2["data"])
 T["dt"] = pd.to_datetime(T["dt_fim_periodo"])
-T = pd.merge_asof(T.sort_values("dt"), A2[["dt", "acoes_total", "tesouraria_total", "acoes_circulacao", "data"]]
-                  .sort_values("dt").rename(columns={"data": "data_ref_acoes"}), on="dt", direction="backward")
-cols_t = (["dt_fim_periodo", "ano", "trimestre", "documento", "fonte", "versao", "n_versoes", "dt_receb_primeira",
-           "dt_receb"] + FLUXOS + [c + "_ltm" for c in LTM]
-          + SALDOS + ["acoes_total", "tesouraria_total", "acoes_circulacao", "data_ref_acoes"]
-          + [c + "_ytd" for c in FLUXOS] + ["obs"])
+T = pd.merge_asof(
+    T.sort_values("dt"),
+    A2[["dt", "acoes_total", "tesouraria_total", "acoes_circulacao", "data"]]
+    .sort_values("dt")
+    .rename(columns={"data": "data_ref_acoes"}),
+    on="dt",
+    direction="backward",
+)
+cols_t = (
+    ["dt_fim_periodo", "ano", "trimestre", "documento", "fonte", "versao", "n_versoes", "dt_receb_primeira", "dt_receb"]
+    + FLUXOS
+    + [c + "_ltm" for c in LTM]
+    + SALDOS
+    + ["acoes_total", "tesouraria_total", "acoes_circulacao", "data_ref_acoes"]
+    + [c + "_ytd" for c in FLUXOS]
+    + ["obs"]
+)
 T = T[cols_t]
 T.to_csv(os.path.join(OUT, "fundamentos_trimestrais.csv"), index=False)
 print("Trimestral:", len(T), "linhas", T["dt_fim_periodo"].min(), "a", T["dt_fim_periodo"].max())
-q = T.set_index("dt_fim_periodo")[["receita_liquida", "ebit", "da", "capex", "ir_cs", "receita_liquida_ltm",
-                                    "divida_bruta", "caixa_aplicacoes", "acoes_circulacao"]] / 1e3
+q = (
+    T.set_index("dt_fim_periodo")[
+        [
+            "receita_liquida",
+            "ebit",
+            "da",
+            "capex",
+            "ir_cs",
+            "receita_liquida_ltm",
+            "divida_bruta",
+            "caixa_aplicacoes",
+            "acoes_circulacao",
+        ]
+    ]
+    / 1e3
+)
 print((q.round(0)).to_string())

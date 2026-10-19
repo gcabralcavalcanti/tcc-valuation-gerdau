@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 03 — Banco Central do Brasil: séries SGS e expectativas Focus (API Olinda).
 
@@ -21,16 +20,16 @@ Saídas: raw/bcb/sgs_<codigo>.csv  e  raw/bcb/focus_anuais_<indicador>.csv (brut
 da API por indicador) + Tabelas intermediárias (CSV)/focus_mensal.csv (amostra mensal).
 Uso:  python -I 03_bcb_sgs_focus.py [--forcar]
 """
+
 import datetime as dt
 import os
-import sys
 import site
+import sys
 import urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # pasta dos scripts (código próprio)
 sys.path.append(site.getusersitepackages())  # pacotes instalados com pip --user (o -I os desativa)
 import pandas as pd  # noqa: E402
-
 from _comum import get_json, pasta_raw, pasta_tratados, registrar  # noqa: E402
 
 FORCAR = "--forcar" in sys.argv
@@ -57,8 +56,10 @@ def baixar_sgs(cod):
     partes = []
     for ini in range(INICIO, HOJE.year + 1, 5):
         fim = min(dt.date(ini + 4, 12, 31), HOJE)
-        url = (f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{cod}/dados?formato=json"
-               f"&dataInicial=01/01/{ini}&dataFinal={fim:%d/%m/%Y}")
+        url = (
+            f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{cod}/dados?formato=json"
+            f"&dataInicial=01/01/{ini}&dataFinal={fim:%d/%m/%Y}"
+        )
         js = get_json(url)  # se um bloco falhar após as tentativas, o script para (evita lacunas silenciosas)
         if isinstance(js, list) and js:
             partes.append(pd.DataFrame(js))
@@ -67,8 +68,12 @@ def baixar_sgs(cod):
     df["valor"] = pd.to_numeric(df["valor"], errors="coerce")
     df = df.sort_values("data")
     df.to_csv(arq, index=False)
-    registrar("BCB-SGS", f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{cod}/dados?formato=json (blocos de 5 anos desde {INICIO})",
-              arq, f"{SERIES[cod]}; {len(df)} obs {df.data.min().date()} a {df.data.max().date()}")
+    registrar(
+        "BCB-SGS",
+        f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{cod}/dados?formato=json (blocos de 5 anos desde {INICIO})",
+        arq,
+        f"{SERIES[cod]}; {len(df)} obs {df.data.min().date()} a {df.data.max().date()}",
+    )
     print(f"SGS {cod}: {len(df)} obs {df.data.min().date()} a {df.data.max().date()}")
 
 
@@ -84,7 +89,7 @@ for ind, apelido in INDICADORES.items():
     arq = os.path.join(PASTA, f"focus_anuais_{apelido}.csv")
     if not os.path.exists(arq) or FORCAR:
         filtro = f"Indicador eq '{ind}'"
-        url = (OLINDA + "?$filter=" + urllib.parse.quote(filtro) + "&$format=json&$top=1000000")
+        url = OLINDA + "?$filter=" + urllib.parse.quote(filtro) + "&$format=json&$top=1000000"
         # obs.: o parâmetro $select provoca erro 403 no firewall do Olinda; por isso baixamos todas as colunas
         js = get_json(url, timeout=600)
         df = pd.DataFrame(js["value"])
@@ -95,8 +100,11 @@ for ind, apelido in INDICADORES.items():
     df["Data"] = pd.to_datetime(df["Data"])
     df = df[df["baseCalculo"] == 0]
     if "IndicadorDetalhe" in df.columns:  # alguns indicadores têm detalhe (ex.: Câmbio "Fim do ano"/"Média do ano")
-        df = df[df["IndicadorDetalhe"].isna() | df["IndicadorDetalhe"].astype(str).str.contains("Fim", case=False)
-                | (df["IndicadorDetalhe"].astype(str) == "nan")]
+        df = df[
+            df["IndicadorDetalhe"].isna()
+            | df["IndicadorDetalhe"].astype(str).str.contains("Fim", case=False)
+            | (df["IndicadorDetalhe"].astype(str) == "nan")
+        ]
     df["mes"] = df["Data"].dt.to_period("M")
     ult = df.groupby("mes")["Data"].transform("max")
     df = df[df["Data"] == ult]

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 01 — CVM Dados Abertos: DFP (anual) e ITR (trimestral) de Gerdau S.A. e pares.
 
@@ -27,16 +26,16 @@ Observações
     "informação disponível na data-base" usar a data correta).
 Uso:  python -I 01_cvm_dfp_itr.py [--forcar]   (--forcar baixa os zips de novo)
 """
+
 import io
 import os
-import sys
 import site
+import sys
 import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # pasta dos scripts (código próprio)
 sys.path.append(site.getusersitepackages())  # pacotes instalados com pip --user (o -I os desativa)
 import pandas as pd  # noqa: E402
-
 from _comum import GERDAU_CD_CVM, GERDAU_CNPJ, baixar, pasta_raw, pasta_tratados, registrar  # noqa: E402
 
 FORCAR = "--forcar" in sys.argv
@@ -75,8 +74,9 @@ ent = {
     # nome no cadastro: "USINAS SID DE MINAS GERAIS S.A.-USIMINAS"
     "USIMINAS": procurar(r"USINAS SID.* DE MINAS GERAIS.*USIMINAS"),
 }
-df_ent = pd.DataFrame([{"EMPRESA": k, "CD_CVM": v[0], "CNPJ_CIA": v[1], "DENOM_SOCIAL": v[2], "SIT": v[3]}
-                       for k, v in ent.items()])
+df_ent = pd.DataFrame(
+    [{"EMPRESA": k, "CD_CVM": v[0], "CNPJ_CIA": v[1], "DENOM_SOCIAL": v[2], "SIT": v[3]} for k, v in ent.items()]
+)
 df_ent.to_csv(os.path.join(OUT, "cvm_entidades.csv"), index=False)
 print(df_ent.to_string(index=False))
 assert 2879 not in df_ent["CD_CVM"].values  # Metalúrgica Gerdau jamais
@@ -135,26 +135,52 @@ for tipo, anos in ANOS.items():
     E = pd.concat(entregas, ignore_index=True)
     E["VERSAO"] = E["VERSAO"].astype(int)
     E["EMPRESA"] = E["CD_CVM_INT"].map(CODIGOS)
-    prim = (E.groupby(["CD_CVM_INT", "DT_REFER"])
-             .agg(DT_RECEB_PRIMEIRA=("DT_RECEB", "min"), N_VERSOES=("VERSAO", "nunique"),
-                  VERSAO_MAX=("VERSAO", "max")).reset_index())
+    prim = (
+        E.groupby(["CD_CVM_INT", "DT_REFER"])
+        .agg(DT_RECEB_PRIMEIRA=("DT_RECEB", "min"), N_VERSOES=("VERSAO", "nunique"), VERSAO_MAX=("VERSAO", "max"))
+        .reset_index()
+    )
     E.drop(columns="CD_CVM_INT").to_csv(os.path.join(OUT, f"cvm_{tipo}_entregas.csv"), index=False)
 
     C = pd.concat(contas, ignore_index=True)
     C["VERSAO"] = C["VERSAO"].astype(int)
     C["EMPRESA"] = C["CD_CVM_INT"].map(CODIGOS)
     # data de entrega da versão efetivamente presente no arquivo de demonstrações
-    C = C.merge(E[["CD_CVM_INT", "DT_REFER", "VERSAO", "DT_RECEB", "ID_DOC"]],
-                on=["CD_CVM_INT", "DT_REFER", "VERSAO"], how="left")
+    C = C.merge(
+        E[["CD_CVM_INT", "DT_REFER", "VERSAO", "DT_RECEB", "ID_DOC"]],
+        on=["CD_CVM_INT", "DT_REFER", "VERSAO"],
+        how="left",
+    )
     C = C.merge(prim, on=["CD_CVM_INT", "DT_REFER"], how="left")
     # se, por algum motivo, houver mais de uma versão no arquivo, fica só a mais recente
     vmax = C.groupby(["CD_CVM_INT", "DT_REFER"])["VERSAO"].transform("max")
     C = C[C["VERSAO"] == vmax]
     C["VL_CONTA"] = pd.to_numeric(C["VL_CONTA"], errors="coerce")
     C["VL_CONTA_MIL"] = C["VL_CONTA"].where(C["ESCALA_MOEDA"] == "MIL", C["VL_CONTA"] / 1000)
-    cols = ["EMPRESA", "CD_CVM_INT", "CNPJ_CIA", "DENOM_CIA", "DT_REFER", "VERSAO", "ID_DOC", "DT_RECEB",
-            "DT_RECEB_PRIMEIRA", "N_VERSOES", "DEMONSTRACAO", "ORDEM_EXERC", "DT_INI_EXERC", "DT_FIM_EXERC",
-            "CD_CONTA", "DS_CONTA", "VL_CONTA_MIL", "ESCALA_MOEDA", "MOEDA", "ST_CONTA_FIXA", "ARQUIVO_ZIP", "URL_ZIP"]
+    cols = [
+        "EMPRESA",
+        "CD_CVM_INT",
+        "CNPJ_CIA",
+        "DENOM_CIA",
+        "DT_REFER",
+        "VERSAO",
+        "ID_DOC",
+        "DT_RECEB",
+        "DT_RECEB_PRIMEIRA",
+        "N_VERSOES",
+        "DEMONSTRACAO",
+        "ORDEM_EXERC",
+        "DT_INI_EXERC",
+        "DT_FIM_EXERC",
+        "CD_CONTA",
+        "DS_CONTA",
+        "VL_CONTA_MIL",
+        "ESCALA_MOEDA",
+        "MOEDA",
+        "ST_CONTA_FIXA",
+        "ARQUIVO_ZIP",
+        "URL_ZIP",
+    ]
     cols = [c for c in cols if c in C.columns]
     C = C[cols].rename(columns={"CD_CVM_INT": "CD_CVM"})
     C.to_csv(os.path.join(OUT, f"cvm_{tipo}_contas.csv"), index=False)
@@ -164,8 +190,14 @@ for tipo, anos in ANOS.items():
         K["VERSAO"] = K["VERSAO"].astype(int)
         K = K[K["VERSAO"] == K.groupby(["CNPJ_CIA", "DT_REFER"])["VERSAO"].transform("max")]
         K.to_csv(os.path.join(OUT, f"cvm_{tipo}_composicao_capital.csv"), index=False)
-    print(f"{tipo.upper()}: {len(C)} linhas de contas; {len(E)} entregas; "
-          f"{sum(len(k) for k in capital)} linhas de composição do capital")
+    print(
+        f"{tipo.upper()}: {len(C)} linhas de contas; {len(E)} entregas; "
+        f"{sum(len(k) for k in capital)} linhas de composição do capital"
+    )
 
-registrar("CVM (derivado)", f"{BASE}/DOC/", os.path.join(OUT, "cvm_dfp_contas.csv"),
-          "extrato filtrado (Gerdau, CSN, Usiminas) dos zips DFP/ITR em raw/cvm")
+registrar(
+    "CVM (derivado)",
+    f"{BASE}/DOC/",
+    os.path.join(OUT, "cvm_dfp_contas.csv"),
+    "extrato filtrado (Gerdau, CSN, Usiminas) dos zips DFP/ITR em raw/cvm",
+)

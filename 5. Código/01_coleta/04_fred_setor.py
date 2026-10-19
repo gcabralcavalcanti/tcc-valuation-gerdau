@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 04 — Séries setoriais do FRED (Federal Reserve Bank of St. Louis), sem chave de API.
 
@@ -19,15 +18,14 @@ Séries que não existirem/retornarem erro são apenas registradas como indispon
 Saídas: raw/fred/<SERIE>.csv e Tabelas intermediárias (CSV)/fred_disponibilidade.csv
 Uso:  python -I 04_fred_setor.py [--forcar]
 """
-import io
+
 import os
-import sys
 import site
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # pasta dos scripts (código próprio)
 sys.path.append(site.getusersitepackages())  # pacotes instalados com pip --user (o -I os desativa)
 import pandas as pd  # noqa: E402
-
 from _comum import baixar, pasta_raw, pasta_tratados  # noqa: E402
 
 FORCAR = "--forcar" in sys.argv

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 02 — Dados de mercado (Yahoo Finance via yfinance).
 
@@ -17,16 +16,16 @@ Observações:
 - Se o yfinance falhar, tenta-se a API do stooq (CSV) como alternativa para os preços.
 Uso:  python -I 02_precos_yfinance.py [--forcar]
 """
+
 import io
 import os
+import site  # noqa: E402
 import sys
 
-import site  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # pasta dos scripts (código próprio)
 sys.path.append(site.getusersitepackages())  # pacotes instalados com pip --user (o -I os desativa)
 import pandas as pd  # noqa: E402
 import requests  # noqa: E402
-
 from _comum import HEADERS, pasta_raw, registrar  # noqa: E402
 
 TICKERS = ["GGBR4.SA", "GGBR3.SA", "^BVSP", "CSNA3.SA", "USIM5.SA"]
@@ -41,6 +40,7 @@ def nome(t):
 
 def via_yfinance(t):
     import yfinance as yf
+
     tk = yf.Ticker(t)
     # auto_adjust=False para manter Close e Adj Close separados
     df = tk.history(start=INICIO, auto_adjust=False, actions=True)

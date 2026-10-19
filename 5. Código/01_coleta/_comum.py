@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Funções e caminhos comuns aos scripts de coleta do TCC (Valuation Gerdau S.A.).
 
@@ -8,6 +7,7 @@ Funções e caminhos comuns aos scripts de coleta do TCC (Valuation Gerdau S.A.)
 - Todos os scripts são idempotentes: um arquivo já baixado não é baixado de novo,
   a menos que se passe forcar=True (ou a flag --forcar na linha de comando).
 """
+
 import csv
 import datetime as dt
 import os
@@ -19,9 +19,13 @@ import requests
 RAIZ = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 PASTA_DADOS = os.path.join(RAIZ, "4. Dados Gerdau")
 PASTA_RAW = os.path.join(PASTA_DADOS, "Downloads originais (raw)")
-PASTA_TRATADOS = os.path.join(PASTA_DADOS, "Tabelas intermediárias (CSV)")   # CSVs intermediários (gerados pelos scripts)
-PLANILHA = os.path.join(PASTA_DADOS, "Database Valuation Gerdau.xlsx")            # versão enxuta (vai para o GitHub)
-PLANILHA_COMPLETA = os.path.join(PASTA_TRATADOS, "Base completa (arquivo).xlsx")   # tudo o que foi coletado, para consulta
+PASTA_TRATADOS = os.path.join(
+    PASTA_DADOS, "Tabelas intermediárias (CSV)"
+)  # CSVs intermediários (gerados pelos scripts)
+PLANILHA = os.path.join(PASTA_DADOS, "Database Valuation Gerdau.xlsx")  # versão enxuta (vai para o GitHub)
+PLANILHA_COMPLETA = os.path.join(
+    PASTA_TRATADOS, "Base completa (arquivo).xlsx"
+)  # tudo o que foi coletado, para consulta
 LOG_PROVENIENCIA = os.path.join(PASTA_RAW, "_proveniencia.csv")
 
 # Identificação da entidade avaliada (NUNCA usar a Metalúrgica Gerdau, CVM 2879)
@@ -53,9 +57,9 @@ def registrar(fonte, url, arquivo, obs=""):
     linhas = []
     if os.path.exists(LOG_PROVENIENCIA):
         with open(LOG_PROVENIENCIA, encoding="utf-8", newline="") as f:
-            linhas = [l for l in csv.DictReader(f)]
+            linhas = list(csv.DictReader(f))
     rel = os.path.relpath(arquivo, PASTA_DADOS).replace("\\", "/")
-    linhas = [l for l in linhas if l["arquivo"] != rel]
+    linhas = [linha for linha in linhas if linha["arquivo"] != rel]
     linhas.append({"fonte": fonte, "url": url, "arquivo": rel, "data_coleta": agora(), "obs": obs})
     with open(LOG_PROVENIENCIA, "w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["fonte", "url", "arquivo", "data_coleta", "obs"])
@@ -82,10 +86,10 @@ def baixar(url, destino, fonte, forcar=False, tentativas=4, timeout=180, obs="")
                     f.write(bloco)
             os.replace(tmp, destino)
             registrar(fonte, url, destino, obs)
-            print(f"  ok: {os.path.basename(destino)} ({os.path.getsize(destino)/1e6:.1f} MB)")
+            print(f"  ok: {os.path.basename(destino)} ({os.path.getsize(destino) / 1e6:.1f} MB)")
             return True
         except Exception as e:  # noqa: BLE001
-            print(f"  falha ({i+1}/{tentativas}) {url}: {e}")
+            print(f"  falha ({i + 1}/{tentativas}) {url}: {e}")
             time.sleep(3 * (i + 1))
     return False
 
@@ -98,6 +102,6 @@ def get_json(url, params=None, tentativas=4, timeout=120):
             r.raise_for_status()
             return r.json()
         except Exception as e:  # noqa: BLE001
-            print(f"  falha ({i+1}/{tentativas}) {url}: {e}")
+            print(f"  falha ({i + 1}/{tentativas}) {url}: {e}")
             time.sleep(3 * (i + 1))
     raise RuntimeError(f"Não foi possível obter {url}")

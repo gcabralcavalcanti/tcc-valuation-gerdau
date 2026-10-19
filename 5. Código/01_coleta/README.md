@@ -55,7 +55,11 @@ recriados com `00_rodar_tudo.py`.
 
 ```python
 import pandas as pd
-URL = "https://raw.githubusercontent.com/gcabralcavalcanti/<repo>/main/Database%20Valuation%20Gerdau.xlsx"
+
+URL = (
+    "https://raw.githubusercontent.com/gcabralcavalcanti/tcc-valuation-gerdau/main/"
+    "4.%20Dados%20Gerdau/Database%20Valuation%20Gerdau.xlsx"
+)
 datas = pd.read_excel(URL, sheet_name="Datas-base")
 fund = pd.read_excel(URL, sheet_name="Fundamentos")
 ```
