@@ -10,10 +10,13 @@ em 5 datas-base anuais (uma por exercício de 2020 a 2024, logo após a divulga�
   Preços diários      pregões desde 2009: GGBR4, Ibovespa e CDI (para o beta e a estratégia)
   Macro anual         PIB, IPCA, CDI, Selic e câmbio
   Expectativas Focus  mediana do Focus disponível em cada data-base (PIB, IPCA, Selic)
+  Mercado nas datas   spread de crédito Baa, EMBI+ Brasil e % da receita no Brasil (custo da dívida e risco-país)
+  Retornos EUA (anual) retornos totais reais de ações e títulos de 10 anos dos EUA (prêmio maduro, Shiller)
 
 Os cabeçalhos já trazem nome legível e unidade; o Colab lê com pd.read_excel(url, sheet_name="Fundamentos").
 
-Lê a base completa gerada pelo 06 ("Tabelas intermediárias (CSV)/Base completa (arquivo).xlsx"); não baixa nada.
+Lê a base completa gerada pelo 06 ("Tabelas intermediárias (CSV)/Base completa (arquivo).xlsx") e os CSVs do 04b;
+não baixa nada.
 Valores monetários em R$ milhões; quantidade de ações em milhões.
 """
 import os
@@ -92,7 +95,41 @@ for d in datas["data_base"]:
     exp.append(linha)
 expect = pd.DataFrame(exp).dropna(axis=1, how="all")   # o Focus ainda não publicava t4 nessas datas
 
+# ------------------------------------------------------------------ Mercado nas datas (custo de capital)
+# Gerado pelo 04b. Só o que era público antes da data-base:
+#   spread Baa − Treasury de 10 anos: média do mês anterior à data-base (FRED BAA e GS10);
+#   EMBI+ Brasil: último dia útil antes da data-base (Ipeadata). A série acabou em 30/07/2024: a data de
+#     fev/2025 usa esse último valor (o mais recente público na data);
+#   receita no Brasil: nota geográfica do 20-F do exercício, como publicada pela 1ª vez
+#     (ver "Brasil x exterior e câmbio (20-F)/Relatório Brasil x exterior.md").
+spread = pd.read_csv(os.path.join(os.path.dirname(PLANILHA_COMPLETA), "spread_baa_mensal.csv"),
+                     parse_dates=["mes"]).set_index("mes")["spread_baa"]
+embi = pd.read_csv(os.path.join(os.path.dirname(PLANILHA_COMPLETA), "embi_diario.csv"),
+                   parse_dates=["data"]).set_index("data")["embi_pb"]
+RECEITA_BRASIL = {2020: 42.9, 2021: 48.2, 2022: 44.2, 2023: 40.2, 2024: 43.7}   # % = 100 − % do exterior
+merc = []
+for _, r in datas.iterrows():
+    d = pd.Timestamp(r["data_base"])
+    mes_anterior = (d - pd.DateOffset(months=1)).to_period("M").to_timestamp()
+    e = embi[embi.index < d]
+    merc.append({"data_base": r["data_base"],
+                 "spread_baa": spread[spread.index <= mes_anterior].iloc[-1],
+                 "embi": e.iloc[-1] / 100, "data_embi": e.index[-1].date(),
+                 "receita_brasil": RECEITA_BRASIL[r["exercicio_disponivel"]]})
+mercado = pd.DataFrame(merc)
+
+# Retornos totais reais dos EUA em dezembro de cada ano (Shiller), para o prêmio maduro histórico.
+# Só até o último exercício usado: o notebook corta em cada data no ano anterior a ela.
+eua = pd.read_csv(os.path.join(os.path.dirname(PLANILHA_COMPLETA), "retornos_eua_dezembro.csv"))
+eua = eua[eua["ano"] <= max(EXERCICIOS_BASE)]
+
 # ------------------------------------------------------------------ cabeçalhos legíveis (nome + unidade)
+mercado = mercado.rename(columns={
+    "data_base": "Data-base", "spread_baa": "Spread Baa − Treasury 10 anos, mês anterior (%)",
+    "embi": "EMBI+ Brasil, véspera (%)", "data_embi": "Data do EMBI usado",
+    "receita_brasil": "Receita no Brasil, último exercício (%)"})
+eua = eua.rename(columns={"ano": "Ano", "acoes_tr_real": "Ações EUA: índice de retorno total real em dez",
+                          "titulos_tr_real": "Títulos 10 anos EUA: índice de retorno total real em dez"})
 datas = datas.rename(columns={
     "data_base": "Data-base", "exercicio_disponivel": "Último exercício publicado",
     "data_divulgacao_dfp": "Divulgação da DFP", "ggbr4_preco": "GGBR4 na data (R$)",
@@ -124,7 +161,8 @@ expect = expect.rename(columns=lambda c: c if "_t" not in c else
 
 # ------------------------------------------------------------------ grava com formatação simples
 abas = {"Datas-base": datas, "Fundamentos": fund, "Preços diários": precos,
-        "Macro anual": macro, "Expectativas Focus": expect}
+        "Macro anual": macro, "Expectativas Focus": expect, "Mercado nas datas": mercado,
+        "Retornos EUA (anual)": eua}
 CAB_FUNDO = PatternFill("solid", fgColor="DCE6F1")
 CAB_FONTE = Font(bold=True, color="1F3864")
 CAB_ALIN = Alignment(wrap_text=True, horizontal="center", vertical="center")

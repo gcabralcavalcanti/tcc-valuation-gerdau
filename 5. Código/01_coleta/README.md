@@ -25,9 +25,10 @@ Ou etapa por etapa:
 | 02 | `02_precos_yfinance.py` | Preços diários 2005–hoje (GGBR4, GGBR3, ^BVSP, CSNA3, USIM5), proventos e desdobramentos. Alternativa: stooq | `Downloads originais (raw)/yfinance/` |
 | 03 | `03_bcb_sgs_focus.py` | BCB-SGS (CDI 12, Selic 11, meta Selic 432, PTAX 1, IPCA 433, IBC-Br 24363, PIB 7326) em blocos de 5 anos; Focus anual (PIB, IPCA, Câmbio, Selic) | `Downloads originais (raw)/bcb/`, `Tabelas intermediárias (CSV)/focus_mensal.csv` |
 | 04 | `04_fred_setor.py` | FRED: PPIs do aço (WPU101, WPU1017, WPU101704, WPU101703, …), sucata, minério de ferro | `Downloads originais (raw)/fred/` |
+| 04b | `04b_mercado_custo_capital.py` | FRED (Baa e Treasury de 10 anos), Ipeadata (EMBI+ Brasil, até 30/07/2024) e Shiller (retornos totais reais dos EUA desde 1871): custo da dívida e prêmio de risco | `Downloads originais (raw)/fred/`, `ipeadata/`, `shiller/`; `Tabelas intermediárias (CSV)/spread_baa_mensal.csv`, `embi_diario.csv`, `retornos_eua_dezembro.csv` |
 | 05 | `05_fundamentos_cvm.py` | Mapeia as contas CVM em variáveis do modelo; painel anual (2009–2025) e trimestral (2010T1–último ITR, com LTM); ações em circulação; validação | `Tabelas intermediárias (CSV)/fundamentos_*.csv`, `Tabelas intermediárias (CSV)/validacao_anual.txt` |
 | 06 | `06_montar_planilha.py` | Monta a base completa (trimestral, pares, setor) | `Tabelas intermediárias (CSV)/Base completa (arquivo).xlsx` |
-| 07 | `07_planilha_enxuta.py` | Monta a planilha da versão 1 (5 datas-base, 6 abas) | `Database Valuation Gerdau.xlsx` |
+| 07 | `07_planilha_enxuta.py` | Monta a planilha da versão 1 (5 datas-base, 7 abas) | `Database Valuation Gerdau.xlsx` |
 
 `_comum.py` tem os caminhos, a função de download e o registro de proveniência.
 

@@ -11,7 +11,7 @@ import sys
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 ETAPAS = ["01_cvm_dfp_itr.py", "01b_cvm_fre_acoes.py", "02_precos_yfinance.py", "03_bcb_sgs_focus.py",
-          "04_fred_setor.py", "05_fundamentos_cvm.py", "06_montar_planilha.py",
+          "04_fred_setor.py", "04b_mercado_custo_capital.py", "05_fundamentos_cvm.py", "06_montar_planilha.py",
           "07_planilha_enxuta.py"]
 extra = [a for a in sys.argv[1:] if a == "--forcar"]
 for e in ETAPAS:
