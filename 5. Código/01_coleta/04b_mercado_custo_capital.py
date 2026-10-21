@@ -5,11 +5,14 @@
                rating da Gerdau (grau de investimento: BBB-/Baa nos 20-F de 2020 a 2024)
   FRED GS10    Treasury de 10 anos dos EUA (% a.a., mensal) — base do spread (BAA − GS10)
   Ipeadata     EMBI+ Brasil (JPM366_EMBI366, pontos-base, diário) — spread de default do país
+  Tesouro      taxas diárias dos títulos do Tesouro Direto (Tesouro Transparente): NTN-F (Tesouro Prefixado com
+               Juros Semestrais), o prefixado mais longo do governo — base da taxa livre de risco
   Shiller      ie_data.xls (shillerdata.com): índices mensais de retorno total REAL do S&P Composite e dos
                títulos de 10 anos dos EUA desde 1871 — prêmio maduro histórico, calculado no notebook
 
-Saídas: raw/fred/BAA.csv, raw/fred/GS10.csv, raw/ipeadata/embi_brasil.json, raw/shiller/ie_data.xls e, em
-Tabelas intermediárias (CSV)/: spread_baa_mensal.csv, embi_diario.csv, retornos_eua_dezembro.csv.
+Saídas: raw/fred/BAA.csv, raw/fred/GS10.csv, raw/ipeadata/embi_brasil.json, raw/tesouro/precotaxatesourodireto.csv,
+raw/shiller/ie_data.xls e, em Tabelas intermediárias (CSV)/: spread_baa_mensal.csv, embi_diario.csv, ntnf_diario.csv,
+retornos_eua_dezembro.csv.
 Uso:  python -I 04b_mercado_custo_capital.py [--forcar]
 """
 
@@ -52,6 +55,27 @@ v = pd.DataFrame(json.load(open(arq, encoding="utf-8"))["value"])
 embi = pd.DataFrame({"data": pd.to_datetime(v["VALDATA"].str[:10]), "embi_pb": v["VALVALOR"]}).dropna()
 embi.sort_values("data").to_csv(os.path.join(TRATADOS, "embi_diario.csv"), index=False)
 
+# ------------------------------------------------------------------ Tesouro Direto: NTN-F
+# Taxa de compra da manhã (a que o Tesouro oferece ao investidor), % a.a., por vencimento e dia.
+arq = os.path.join(pasta_raw("tesouro"), "precotaxatesourodireto.csv")
+url = (
+    "https://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/"
+    "resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/precotaxatesourodireto.csv"
+)
+if not baixar(url, arq, "Tesouro Transparente", forcar=FORCAR, obs="Taxas dos títulos ofertados pelo Tesouro Direto"):
+    sys.exit("Sem as taxas do Tesouro Direto")
+td = pd.read_csv(arq, sep=";", decimal=",")
+td = td[td["Tipo Titulo"] == "Tesouro Prefixado com Juros Semestrais"]
+ntnf = pd.DataFrame(
+    {
+        "data": pd.to_datetime(td["Data Base"], dayfirst=True),
+        "vencimento": pd.to_datetime(td["Data Vencimento"], dayfirst=True),
+        "taxa_compra": td["Taxa Compra Manha"],
+    }
+)
+ntnf = ntnf[ntnf["taxa_compra"] > 0].sort_values(["data", "vencimento"])
+ntnf.to_csv(os.path.join(TRATADOS, "ntnf_diario.csv"), index=False)
+
 # ------------------------------------------------------------------ Shiller: retornos totais reais dos EUA
 # O link do arquivo muda a cada atualização; lê o link atual na página do site.
 arq = os.path.join(pasta_raw("shiller"), "ie_data.xls")
@@ -79,5 +103,6 @@ dez.to_csv(os.path.join(TRATADOS, "retornos_eua_dezembro.csv"), index=False)
 print(
     f"spread Baa: {spread.index.min():%Y-%m} a {spread.index.max():%Y-%m}; "
     f"EMBI: {embi['data'].min():%Y-%m-%d} a {embi['data'].max():%Y-%m-%d}; "
+    f"NTN-F: {ntnf['data'].min():%Y-%m-%d} a {ntnf['data'].max():%Y-%m-%d}; "
     f"Shiller (dezembros): {dez['ano'].min()} a {dez['ano'].max()}"
 )

@@ -9,7 +9,8 @@ em 5 datas-base anuais (uma por exercício de 2020 a 2024, logo após a divulga�
   Preços diários      pregões desde 2009: GGBR4, Ibovespa e CDI (para o beta e a estratégia)
   Macro anual         PIB, IPCA, CDI, Selic e câmbio
   Expectativas Focus  mediana do Focus disponível em cada data-base (PIB, IPCA, Selic)
-  Mercado nas datas   spread de crédito Baa, EMBI+ Brasil e % da receita no Brasil (custo da dívida e risco-país)
+  Mercado nas datas   NTN-F mais longa, spread de crédito Baa, EMBI+ Brasil e % da receita no Brasil (taxa livre,
+                      custo da dívida e risco-país)
   Retornos EUA (anual) retornos totais reais de ações e títulos de 10 anos dos EUA (prêmio maduro, Shiller)
 
 Os cabeçalhos já trazem nome legível e unidade; o Colab lê com pd.read_excel(url, sheet_name="Fundamentos").
@@ -124,6 +125,8 @@ expect = pd.DataFrame(exp).dropna(axis=1, how="all")  # o Focus ainda não publi
 #   spread Baa − Treasury de 10 anos: média do mês anterior à data-base (FRED BAA e GS10);
 #   EMBI+ Brasil: último dia útil antes da data-base (Ipeadata). A série acabou em 30/07/2024: a data de
 #     fev/2025 usa esse último valor (o mais recente público na data);
+#   NTN-F: taxa de compra do prefixado com juros semestrais de vencimento mais longo ofertado no último dia
+#     útil antes da data-base (Tesouro Direto);
 #   receita no Brasil: nota geográfica do 20-F do exercício, como publicada pela 1ª vez
 #     (ver "Brasil x exterior e câmbio (20-F)/Relatório Brasil x exterior.md").
 spread = pd.read_csv(
@@ -132,15 +135,21 @@ spread = pd.read_csv(
 embi = pd.read_csv(os.path.join(os.path.dirname(PLANILHA_COMPLETA), "embi_diario.csv"), parse_dates=["data"]).set_index(
     "data"
 )["embi_pb"]
+ntnf = pd.read_csv(
+    os.path.join(os.path.dirname(PLANILHA_COMPLETA), "ntnf_diario.csv"), parse_dates=["data", "vencimento"]
+)
 RECEITA_BRASIL = {2020: 42.9, 2021: 48.2, 2022: 44.2, 2023: 40.2, 2024: 43.7}  # % = 100 − % do exterior
 merc = []
 for _, r in datas.iterrows():
     d = pd.Timestamp(r["data_base"])
     mes_anterior = (d - pd.DateOffset(months=1)).to_period("M").to_timestamp()
     e = embi[embi.index < d]
+    n = ntnf[ntnf["data"] == ntnf.loc[ntnf["data"] < d, "data"].max()].iloc[-1]  # vencimento mais longo
     merc.append(
         {
             "data_base": r["data_base"],
+            "ntnf": n["taxa_compra"],
+            "vencimento_ntnf": n["vencimento"].date(),
             "spread_baa": spread[spread.index <= mes_anterior].iloc[-1],
             "embi": e.iloc[-1] / 100,
             "data_embi": e.index[-1].date(),
@@ -158,6 +167,8 @@ eua = eua[eua["ano"] <= max(EXERCICIOS_BASE)]
 mercado = mercado.rename(
     columns={
         "data_base": "Data-base",
+        "ntnf": "NTN-F mais longa, véspera (% a.a.)",
+        "vencimento_ntnf": "Vencimento da NTN-F usada",
         "spread_baa": "Spread Baa − Treasury 10 anos, mês anterior (%)",
         "embi": "EMBI+ Brasil, véspera (%)",
         "data_embi": "Data do EMBI usado",
